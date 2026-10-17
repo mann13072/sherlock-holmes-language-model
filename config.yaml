@@ -1,0 +1,84 @@
+# ============================================================
+# Book Transformer configuration
+# Every script reads this one file, so all numbers live here.
+# ============================================================
+
+seed: 42                     # same seed -> same random init -> same results
+
+# Which model size to use: "default" or "small".
+# "small" trains several times faster on a CPU.
+preset: default
+
+data:
+  book_path: data/book.txt
+  train_fraction: 0.9        # first 90% of the book = training, last 10% = validation
+
+tokenizer:
+  path: artifacts/tokenizer.json
+  vocab_size: 4000           # target size; the tokenizer may end up slightly smaller
+
+model_presets:
+  default:
+    context_length: 128          # how many tokens the model can see at once (not 256, so it differs from embedding_dimension)
+    embedding_dimension: 256     # length of each token's vector
+    num_transformer_layers: 6
+    num_attention_heads: 8
+    head_dimension: 32           # 256 = 8 heads x 32 dims
+    feed_forward_dimension: 1024 # hidden width of the SwiGLU MLP
+    dropout: 0.1
+  small:
+    context_length: 128
+    embedding_dimension: 128
+    num_transformer_layers: 4
+    num_attention_heads: 4
+    head_dimension: 32           # 128 = 4 heads x 32 dims
+    feed_forward_dimension: 512
+    dropout: 0.1
+
+# Model B: the same model, but the token table comes from EmbeddingGemma 2.
+# Model A uses the tokenizer above and its own random E.
+model_b:
+  gemma_repo: google/embeddinggemma-2
+  gemma_tensor: language_model.embed_tokens.weight   # [262144, 512], the input token table
+  table_path: artifacts/gemma_book_table.pt          # only the rows that the book uses
+  freeze_table: true                                 # the optimizer does not change the Gemma rows; only P (512 -> 256) learns
+
+# Model C: the Model A tokenizer (4,000 tokens) with a Gemma row for each token (mean over its Gemma pieces).
+# The control table (_random.pt) has random rows with the same std. Only P (512 -> 256) learns.
+model_c:
+  table_path: artifacts/gemma_model_c_table.pt       # [4000, 512]; make it with: python -m src.gemma_embeddings --prepare-c
+  freeze_table: true
+  untied_output: true    # the user decided on 2026-10-16: a separate output head [4000, 256], no weight tying
+
+# Fixed architectural choices (documented here; implemented in src/)
+architecture:
+  type: decoder_only_transformer
+  normalization: RMSNorm
+  activation: SwiGLU
+  positional_encoding: RoPE
+  weight_tying: true
+
+training:
+  batch_size: 16
+  gradient_accumulation_steps: 1   # e.g. batch_size 4 x accumulation 4 = effective 16
+  max_steps: 3000
+  learning_rate: 0.0003
+  min_learning_rate: 0.00003       # floor reached at the end of cosine decay
+  warmup_steps: 200
+  betas: [0.9, 0.95]
+  weight_decay: 0.1
+  gradient_clip: 1.0
+  eval_interval: 100               # small dataset -> evaluate often to catch overfitting
+  eval_batches: 20
+  early_stop_patience: 10          # stop if the validation loss does not improve in 10 evaluations (1,000 steps)
+  checkpoint_interval: 500
+  checkpoint_dir: artifacts/checkpoints
+  sample_prompt: "The"
+  sample_tokens: 60
+
+generation:
+  max_new_tokens: 200
+  temperature: 0.8
+  top_k: 40
+  top_p: 0.95
+  use_kv_cache: true
