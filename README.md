@@ -89,3 +89,7 @@ The training used AdamW (betas 0.9/0.95, weight decay 0.1), a warmup of 200 step
 
 - The input table is made from the input-token embeddings of [EmbeddingGemma 2](https://huggingface.co/google/embeddinggemma-2) by Google (Apache 2.0).
 - Book texts: [Project Gutenberg](https://www.gutenberg.org).
+
+## License
+
+The code and the checkpoint: MIT License (see `LICENSE`). The input table comes from EmbeddingGemma 2, which has the Apache 2.0 license.
